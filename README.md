@@ -45,3 +45,13 @@ kuz_encrypt_block(): 23976.211 kB/s (n=51200kB,t=2.135s)
 kuz_decrypt_block(): 17261.171 kB/s (n=51200kB,t=2.966s)
 ```
 This indicates success!
+
+--- 
+
+## Fork Notes
+
+This library was modified to allow it to work well with the DiscreteCrypt project. The library now supports ARM (tested only on 64 Bit) with certain build flags.
+
+Switching to 8bit would probably also allow it to run on ARM. 
+
+The edits also added a counter mode features, which makes this library less "pure" than it is supposed to be, thus I will likely not be creating a PR. 
