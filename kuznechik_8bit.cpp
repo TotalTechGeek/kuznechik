@@ -1,28 +1,15 @@
-// kuznechik_128bit.c
+// kuznechik.c
 // 04-Jan-15  Markku-Juhani O. Saarinen <mjos@iki.fi>
 
-// Basic 128-bit version without platform - specific optimizations
-
+// This is the basic non-optimized 8-bit "readble" version of the cipher.
 // Conforms to included doc/GOSTR-bsh.pdf file, which has an internal
 // date of September 2, 2014.
 
 #include "kuznechik.h"
 
-#ifdef __SSE2__
-#include <mmintrin.h>
-#include <emmintrin.h>
-#include <smmintrin.h>
-#elif defined(__ARM_NEON__)
-#include "sse_to_neon.hpp"
-#else
-#warning "__int128 might not be supported on this platform"
-typedef unsigned __int128 __m128i;
-#endif
-
-
 // The S-Box from section 5.1.1
 
-static const uint8_t kuz_pi[0x100] = {
+const uint8_t kuz_pi[0x100] = {
 	0xFC, 0xEE, 0xDD, 0x11, 0xCF, 0x6E, 0x31, 0x16, 	// 00..07
 	0xFB, 0xC4, 0xFA, 0xDA, 0x23, 0xC5, 0x04, 0x4D, 	// 08..0F
 	0xE9, 0x77, 0xF0, 0xDB, 0x93, 0x2E, 0x99, 0xBA, 	// 10..17
@@ -101,14 +88,8 @@ static const uint8_t kuz_lvec[16] = {
 	0x01, 0xC0, 0xC2, 0x10, 0x85, 0x20, 0x94, 0x01
 };
 
-// lookup tables initialized by kuz_init()
-
-static int kuz_initialized = 0;
-static __m128i kuz_pil_enc128[16][256];
-static __m128i kuz_l_dec128[16][256];
-static __m128i kuz_pil_dec128[16][256];
-
 // poly multiplication mod p(x) = x^8 + x^7 + x^6 + x + 1
+// totally not constant time
 
 static uint8_t kuz_mul_gf256(uint8_t x, uint8_t y)
 {
@@ -125,7 +106,7 @@ static uint8_t kuz_mul_gf256(uint8_t x, uint8_t y)
 	return z;
 }
 
-// (slow) linear operation l
+// linear operation l
 
 static void kuz_l(w128_t *w)
 {
@@ -165,6 +146,12 @@ static void kuz_l_inv(w128_t *w)
 	}
 }
 
+// a no-op
+
+void kuz_init()
+{
+	;
+}
 // key setup
 
 void kuz_set_encrypt_key(kuz_key_t *kuz, const uint8_t key[32])
@@ -172,9 +159,6 @@ void kuz_set_encrypt_key(kuz_key_t *kuz, const uint8_t key[32])
 	int i, j;
 	w128_t c, x, y, z;
 		
-	if (!kuz_initialized)
-		kuz_init();
-	
 	for (i = 0; i < 16; i++) {
 		// this will be have to changed for little-endian systems
 		x.b[i] = key[i];
@@ -221,130 +205,53 @@ void kuz_set_encrypt_key(kuz_key_t *kuz, const uint8_t key[32])
 
 void kuz_set_decrypt_key(kuz_key_t *kuz, const uint8_t key[32])
 {
-	int i;
-
 	kuz_set_encrypt_key(kuz, key);
-
-	for (i = 1; i < 10; i++)
-		kuz_l_inv(&kuz->k[i]);
 }
 
-// encrypt a block - 128 bit way
+// encrypt a block - 8 bit way
 
 void kuz_encrypt_block(kuz_key_t *key, void *blk)
-{
-	int i;
-	__m128i x;
-
-	x = *((__m128i *) blk);
-
-	for (i = 0; i < 9; i++) {
-		x ^= *((__m128i *) &key->k[i]);
-		x = kuz_pil_enc128[ 0][((uint8_t *) &x)[ 0]] ^
-			kuz_pil_enc128[ 1][((uint8_t *) &x)[ 1]] ^
-			kuz_pil_enc128[ 2][((uint8_t *) &x)[ 2]] ^
-			kuz_pil_enc128[ 3][((uint8_t *) &x)[ 3]] ^
-			kuz_pil_enc128[ 4][((uint8_t *) &x)[ 4]] ^
-			kuz_pil_enc128[ 5][((uint8_t *) &x)[ 5]] ^
-			kuz_pil_enc128[ 6][((uint8_t *) &x)[ 6]] ^
-			kuz_pil_enc128[ 7][((uint8_t *) &x)[ 7]] ^
-			kuz_pil_enc128[ 8][((uint8_t *) &x)[ 8]] ^
-			kuz_pil_enc128[ 9][((uint8_t *) &x)[ 9]] ^
-			kuz_pil_enc128[10][((uint8_t *) &x)[10]] ^
-			kuz_pil_enc128[11][((uint8_t *) &x)[11]] ^
-			kuz_pil_enc128[12][((uint8_t *) &x)[12]] ^
-			kuz_pil_enc128[13][((uint8_t *) &x)[13]] ^
-			kuz_pil_enc128[14][((uint8_t *) &x)[14]] ^
-			kuz_pil_enc128[15][((uint8_t *) &x)[15]];
-			
-	}
-	x ^= *((__m128i *) &key->k[9]);
-
-	*((__m128i *) blk) = x;
-}
-
-// decrypt a block - 128 bit way
-
-void kuz_decrypt_block(kuz_key_t *key, void *blk)
-{
-	int i, j;
-	__m128i x;
-
-	x = *((__m128i *) blk);
-	
-	x = kuz_l_dec128[ 0][((uint8_t *) &x)[ 0]] ^
-		kuz_l_dec128[ 1][((uint8_t *) &x)[ 1]] ^
-		kuz_l_dec128[ 2][((uint8_t *) &x)[ 2]] ^
-		kuz_l_dec128[ 3][((uint8_t *) &x)[ 3]] ^
-		kuz_l_dec128[ 4][((uint8_t *) &x)[ 4]] ^
-		kuz_l_dec128[ 5][((uint8_t *) &x)[ 5]] ^
-		kuz_l_dec128[ 6][((uint8_t *) &x)[ 6]] ^
-		kuz_l_dec128[ 7][((uint8_t *) &x)[ 7]] ^
-		kuz_l_dec128[ 8][((uint8_t *) &x)[ 8]] ^
-		kuz_l_dec128[ 9][((uint8_t *) &x)[ 9]] ^
-		kuz_l_dec128[10][((uint8_t *) &x)[10]] ^
-		kuz_l_dec128[11][((uint8_t *) &x)[11]] ^
-		kuz_l_dec128[12][((uint8_t *) &x)[12]] ^
-		kuz_l_dec128[13][((uint8_t *) &x)[13]] ^
-		kuz_l_dec128[14][((uint8_t *) &x)[14]] ^
-		kuz_l_dec128[15][((uint8_t *) &x)[15]];
-
-	for (i = 9; i > 1; i--) {
-		x ^= *((__m128i *) &key->k[i]);
-		x = kuz_pil_dec128[ 0][((uint8_t *) &x)[ 0]] ^
-			kuz_pil_dec128[ 1][((uint8_t *) &x)[ 1]] ^
-			kuz_pil_dec128[ 2][((uint8_t *) &x)[ 2]] ^
-			kuz_pil_dec128[ 3][((uint8_t *) &x)[ 3]] ^
-			kuz_pil_dec128[ 4][((uint8_t *) &x)[ 4]] ^
-			kuz_pil_dec128[ 5][((uint8_t *) &x)[ 5]] ^
-			kuz_pil_dec128[ 6][((uint8_t *) &x)[ 6]] ^
-			kuz_pil_dec128[ 7][((uint8_t *) &x)[ 7]] ^
-			kuz_pil_dec128[ 8][((uint8_t *) &x)[ 8]] ^
-			kuz_pil_dec128[ 9][((uint8_t *) &x)[ 9]] ^
-			kuz_pil_dec128[10][((uint8_t *) &x)[10]] ^
-			kuz_pil_dec128[11][((uint8_t *) &x)[11]] ^
-			kuz_pil_dec128[12][((uint8_t *) &x)[12]] ^
-			kuz_pil_dec128[13][((uint8_t *) &x)[13]] ^
-			kuz_pil_dec128[14][((uint8_t *) &x)[14]] ^
-			kuz_pil_dec128[15][((uint8_t *) &x)[15]];
-	}
-	x ^= *((__m128i *) &key->k[1]);
-	for (j = 0; j < 16; j++)
-		((uint8_t *) &x)[j] = kuz_pi_inv[((uint8_t *) &x)[j]];	
-	x ^= *((__m128i *) &key->k[0]);
-
-	*((__m128i *) blk) = x;
-}
-
-// initalize lookup tables
-
-void kuz_init()
 {
 	int i, j;
 	w128_t x;
 
-	for (i = 0; i < 16; i++) {
-		for (j = 0; j < 256; j++) {
-			x.q[0] = 0;
-			x.q[1] = 0;
-			x.b[i] = kuz_pi[j];
-			kuz_l(&x);
-			kuz_pil_enc128[i][j] = *((__m128i *) &x);
-			
-			x.q[0] = 0;
-			x.q[1] = 0;
-			x.b[i] = j; // kuz_pi[j];
-			kuz_l_inv(&x);
-			kuz_l_dec128[i][j] = *((__m128i *) &x);			
+	x.q[0] = ((uint64_t *) blk)[0];
+	x.q[1] = ((uint64_t *) blk)[1];
 
-			x.q[0] = 0;
-			x.q[1] = 0;
-			x.b[i] = kuz_pi_inv[j];
-			kuz_l_inv(&x);
-			kuz_pil_dec128[i][j] = *((__m128i *) &x);			
-		}
+	for (i = 0; i < 9; i++) {
+
+		x.q[0] ^= key->k[i].q[0];
+		x.q[1] ^= key->k[i].q[1];
+
+		for (j = 0; j < 16; j++)
+			x.b[j] = kuz_pi[x.b[j]];
+		kuz_l(&x);
 	}
-	kuz_initialized = 1;
+	((uint64_t *) blk)[0] = x.q[0] ^ key->k[9].q[0];
+	((uint64_t *) blk)[1] = x.q[1] ^ key->k[9].q[1];
+}
+
+// decrypt a block - 8 bit way
+
+void kuz_decrypt_block(kuz_key_t *key, void *blk)
+{
+	int i, j;
+	w128_t x;
+
+	x.q[0] = ((uint64_t *) blk)[0] ^ key->k[9].q[0];
+	x.q[1] = ((uint64_t *) blk)[1] ^ key->k[9].q[1];
+
+	for (i = 8; i >= 0; i--) {
+	
+		kuz_l_inv(&x);
+		for (j = 0; j < 16; j++)
+			x.b[j] = kuz_pi_inv[x.b[j]];
+	
+		x.q[0] ^= key->k[i].q[0];	
+		x.q[1] ^= key->k[i].q[1];
+	}
+	((uint64_t *) blk)[0] = x.q[0];
+	((uint64_t *) blk)[1] = x.q[1];
 }
 
 

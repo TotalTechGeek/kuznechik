@@ -1,24 +1,32 @@
 # Makefile
 # 04-Jan-15 Markku-Juhani O. Saarinen <mjos@iki.fi>
 
-BIN	= xtest
+BIN	= xtest 
+OUT = libkuznechik.a
 OBJS	= main.o \
-	kuznechik_128bit.o
+	kuznechik_128bit.o \
+	ctr.o
 #	kuznechik_8bit.o
 
 DIST	= kuznechik
 
-CC	= gcc
-CFLAGS	= -Wall -Ofast -march=native
+CC	= g++ -std=c++11
+CFLAGS	= -Ofast -static
 LIBS	=
-LDFLAGS	=
+LDFLAGS	= -Ofast -s -static
 INCS	=
 
-$(BIN): $(OBJS)
-	$(CC) $(LDFLAGS) -o $(BIN) $(OBJS) $(LIBS)
+# EXTRA   = -mcpu=cortex-a53 -mfpu=neon-fp-armv8 -D__ARM_NEON_
+EXTRA = 
 
-.c.o:
-	$(CC) $(CFLAGS) $(INCS) -c $< -o $@
+$(OUT): $(OBJS) 
+	ar crf $(OUT) $(OBJS) $(LIBS)
+
+$(BIN): $(OBJS)
+	$(CC) $(LDFLAGS) $(EXTRA) -o $(BIN) $(OBJS) $(LIBS)
+
+.cpp.o:
+	$(CC) $(CFLAGS) $(INCS) $(EXTRA) -c $< -o $@
 
 clean:
 	rm -rf $(DIST)-*.t?z $(OBJS) $(BIN) *~
